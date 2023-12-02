@@ -50,21 +50,23 @@ const User = mongoose.model('User', userSchema);
 const workLogsSchema = new mongoose.Schema({
   userID: String,
   projectID: String,
-  startTime: Date,
-  endTime: Date,
-  startBreakTime: Date,
-  endBreakTime: Date,
+  projectName: String,
+  startTime: String,
+  endTime: String,
+  startBreakTime: String,
+  endBreakTime: String,
 });
 
-const Session = mongoose.model('WorkLogs', workLogsSchema);
+const WorkLog = mongoose.model('WorkLogs', workLogsSchema);
 
 // ------------ Definicja schematu dla projektów
 const projectsSchema = new mongoose.Schema({
   userID: String,
   nameOfProject: String,
+  description: String,
 });
 
-const Message = mongoose.model('Projects', projectsSchema);
+const Project = mongoose.model('Projects', projectsSchema);
 
 // ---- sprawdzanie danych logowania
 passport.use(new LocalStrategy(
@@ -156,6 +158,62 @@ app.post('/register', async (req, res) => {
       }
     })(req, res, next);
   });
+
+// ---------------- wprowadzanie nowych projektów
+app.post('/api/projects', async (req, res) => {
+    try {
+      const { nameOfProject, description } = req.body;
+      const userID = req.isAuthenticated() ? req.user.id : null;
+      
+      const newProject = new Project({
+        userID,
+        nameOfProject,
+        description,
+      });
+  
+      await newProject.save();
+  
+      res.status(200).json({ message: 'Adding project successful', project: newProject });
+    } catch (error) {
+      console.error('Error creating project:', error);
+      res.status(500).json({ message: 'Error creating project' });
+    }
+  });
+
+  // ----------------  edycja projektu
+app.put('/api/projects/:projectID', async (req, res) => {
+    try {
+      const { projectID } = req.params;
+      const { nameOfProject, description } = req.body;
+  
+      const updatedProject = await Project.findByIdAndUpdate(
+        projectID,
+        { nameOfProject, description },
+        { new: true }
+      );
+  
+      res.status(200).json({ message: 'Project edit successful', project: updatedProject });
+    } catch (error) {
+      console.error('Error editing project:', error);
+      res.status(500).json({ message: 'Error editing project' });
+    }
+  });
+
+  // ----------------  usuwanie projektu
+app.delete('/api/projects/:projectID', async (req, res) => {
+    try {
+      const { projectID } = req.params;
+      console.log('Received sessionId:', projectID); // Dodany console.log
+  
+      await Project.findByIdAndDelete(projectID);
+  
+      res.status(200).json({ message: 'Session canceled successfully', canceledProject: { id: projectID } });
+    } catch (error) {
+      console.error('Error canceling project:', error);
+      res.status(500).json({ message: 'Error canceling project' });
+    }
+  });
+
 
 // nasłuchiwanie serwera
 const port = process.env.PORT || 5000;
