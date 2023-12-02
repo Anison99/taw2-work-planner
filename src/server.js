@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const sessionSecret = process.env.SESSION_SECRET || 'default-secret-key';
@@ -104,60 +105,57 @@ passport.deserializeUser(async (id, done) => {
 
 // obsługa rejestracji
 app.post('/register', async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-
-    const existingUser = await User.findOne({ email });
-
-    if (existingUser) {
-      return res.status(400).json({ message: 'User with this email already exists' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      username,
-      email,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-
-    req.login(newUser, (err) => {
-      if (err) {
-        return console.log(res.status(500).json({ message: 'Error logging in after registration' }));
-      }
-      return console.log(res.json({ message: 'Registration and login successful' }));
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    console.log(res.status(500).json({ message: 'Error during registration' }));
-  }
-});
-
-// Kod obsługi logowania użytkownika (sprawdzenie czy dany użytkownik istnieje)
-app.post('/login', async (req, res, next) => {
-  passport.authenticate('local', async (err, user, info) => {
     try {
-      if (err) {
-        return console.log(res.status(500).json({ message: 'Internal Server Error' }));
+      const { username, email, password } = req.body;
+  
+      const existingUser = await User.findOne({ email });
+  
+      if (existingUser) {
+        return res.status(400).json({ message: 'User with this email already exists' });
       }
-      if (!user) {
-        return console.log(res.status(401).json({ message: 'Invalid credentials' }));
-      }
-      req.logIn(user, (err) => {
-        if (err) {
-          return console.log(res.status(500).json({ message: 'Login failed' }));
-        }
-        console.log('User logged in:', req.user.username);
-        return console.log(res.json({ message: 'Login successful' }));
+  
+      const hashedPassword = await bcrypt.hash(password, 10);
+  
+      const newUser = new User({
+        username,
+        email,
+        password: hashedPassword,
       });
+  
+      await newUser.save();
+  
+      // Tworzenie tokena JWT po rejestracji
+      const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  
+      // Zwrócenie odpowiedzi zawierającej token JWT
+      res.status(200).json({ message: 'Registration and login successful', token });
     } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({ message: 'Error during login' });
+      console.error('Registration error:', error);
+      res.status(500).json({ message: 'Error during registration' });
     }
-  })(req, res, next);
-});
+  });
+  
+  // Kod obsługi logowania użytkownika (sprawdzenie czy dany użytkownik istnieje)
+  app.post('/login', async (req, res, next) => {
+    passport.authenticate('local', async (err, user, info) => {
+      try {
+        if (err) {
+          return res.status(500).json({ message: 'Internal Server Error' });
+        }
+        if (!user) {
+          return res.status(401).json({ message: 'Invalid credentials' });
+        }
+  
+        // Tworzenie tokena JWT po poprawnym zalogowaniu
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  
+        res.status(200).json({ message: 'Login successful', token });
+      } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Error during login' });
+      }
+    })(req, res, next);
+  });
 
 // nasłuchiwanie serwera
 const port = process.env.PORT || 5000;
